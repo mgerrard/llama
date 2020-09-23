@@ -23,7 +23,7 @@ that are not already defined. Llama also allows for the -debug flag to allow for
 
 ## Misc
 
-Two technical notes that relevant at a high level:
+Two technical notes that are relevant at a high level:
 (1) we use the `language-c` Haskell library to get ahold of
 the abstract syntax tree of the input C program--the API for
 the AST can be found 
