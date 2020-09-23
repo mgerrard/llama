@@ -18,7 +18,7 @@ Llama requires two arguments and allows for an optional third argument. The firs
 the program that will be pared down and the second is the function that will be analyzed.
 Llama attempts to create a minimal program that analyzers can process. To this end, many 
 libraries may not be pulled into the program which may prevent parts of the program to be 
-analyzed. To remedy this, llama accepts a stub file which contains definition for the functions
+analyzed. To remedy this, llama accepts a stub file which contains definitions for the functions
 that are not already defined. Llama also allows for the -debug flag to allow for debugging of the output.
 
 ## Misc
