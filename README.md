@@ -15,7 +15,7 @@ To give the tests a go, run `stack test` within this repo's base directory.
 `llama <foo.c> <bar> [stub.c] [-debug]`
 
 Llama requires two arguments and allows for an optional third argument. The first argument is
-the program that will be pared down and the second is the function that will be analyzed.
+the program (`foo.c`) that will be pared down and the second is the function (`bar`) that will be analyzed.
 Llama attempts to create a minimal program that analyzers can process. To this end, many 
 libraries may not be pulled into the program which may prevent parts of the program to be 
 analyzed. To remedy this, llama accepts a stub file which contains definitions for the functions
