@@ -5,17 +5,17 @@ LLAMA (Lessen Loaded ASTs (for) Modular Analysis) is a preprocessing tool used t
 abbreviated C programs to allow for modular analysis of C programs. LLAMA accepts a C
 program, `P`, and a function, `f()`, in said program and produces an C program, `P'`,
 that contains the portions of the program needed to analyze `f()`. This project is closely 
-related to ALPACA, but is its ownbeast, so it'll be called `llama`. 
+related to ALPACA, but is its own beast, so it'll be called `llama`. 
 
 ## Build
 To produce the `llama` executable, run `make` within this repo's base directory.
 To give the tests a go, run `stack test` within this repo's base directory.
 
 ## Usage
-llama <foo.c> <bar> [stub.c] [-debug]
+`llama <foo.c> <bar> [stub.c] [-debug]`
 
 Llama requires two arguments and allows for an optional third argument. The first argument is
-the program that will be paired down and the second is the function that will be analyzed.
+the program that will be pared down and the second is the function that will be analyzed.
 Llama attempts to create a minimal program that analyzers can process. To this end, many 
 libraries may not be pulled into the program which may prevent parts of the program to be 
 analyzed. To remedy this, llama accepts a stub file which contains definition for the functions
