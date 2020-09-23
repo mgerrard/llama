@@ -3,7 +3,7 @@
 ## About
 LLAMA (Lessen Loaded ASTs (for) Modular Analysis) is a preprocessing tool used to produce 
 abbreviated C programs to allow for modular analysis of C programs. LLAMA accepts a C
-program, `P`, and a function, `f()`, in said program and produces an C program, `P'`,
+program, `P`, and a function, `f()`, in said program and produces a C program, `P'`,
 that contains the portions of the program needed to analyze `f()`. This project is closely 
 related to ALPACA, but is its own beast, so it'll be called `llama`. 
 
