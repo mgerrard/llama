@@ -59,23 +59,17 @@ hackage.haskell.org/package/language-c-0.8.3/docs/Language-C-Analysis-AstAnalysi
 
 \begin{code}
 
-modularize :: String -> AST -> Maybe AST -> Bool -> IO AST
-modularize funcName ast mAst debug = do
-  let ast' = possiblySmoosh ast mAst
-      ast'' = enforceNamedStructs ast'
-      (ast''',pNames) = makeParamsGlobal ast'' funcName
-  (globals,_) <- (runTrav_ >>> checkResult "[analysis]") $ analyseAST ast'''
+modularize :: String -> AST -> Bool -> IO AST
+modularize funcName ast debug = do
+  let ast' = enforceNamedStructs ast
+      (ast'',pNames) = makeParamsGlobal ast' funcName
+  (globals,_) <- (runTrav_ >>> checkResult "[analysis]") $ analyseAST ast''
   let globals' = filterGlobalDecls symbolicEvent globals
 
   setup <- symbolicSetup globals' debug
   let m = modularMain setup funcName pNames
-      ast'''' = appendMain ast''' m
-  return ast''''
-
-possiblySmoosh :: AST -> Maybe AST -> AST
-possiblySmoosh a Nothing = a
-possiblySmoosh (CTranslUnit origAst a) (Just (CTranslUnit stubAst _)) =
-  (CTranslUnit (stubAst++origAst) a)
+      ast''' = appendMain ast'' m
+  return ast'''
 
 enforceNamedStructs :: AST -> AST
 enforceNamedStructs (CTranslUnit es _) =

@@ -23,8 +23,8 @@ main = do
 
   -- Main logic  
   ast <- parseFile p'
-  ast' <- prune funcName ast debugFlag
-  ast'' <- modularize funcName ast' mStubAst debugFlag
+  ast' <- prune funcName ast mStubAst debugFlag
+  ast'' <- modularize funcName ast' debugFlag
 
   -- Display
   printAST ast''

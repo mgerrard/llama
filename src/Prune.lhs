@@ -37,25 +37,30 @@ import Data.List (nub,(\\))
 import Language.C
 import Language.C.Data.Ident
 
-prune :: String -> AST -> Bool -> IO AST
-prune entryFunction (CTranslUnit es _) debug = do
+prune :: String -> AST -> Maybe AST -> Bool -> IO AST
+prune entryFunction ast mAst debug = do
+  let (CTranslUnit es _) = possiblySmoosh ast mAst
   let es' = filter (not . externOrAttr) es
---  let es' = es
-      ast = CTranslUnit es' undefNode
-  (names, _) <- collectNames ([],[entryFunction]) ast
+      ast' = CTranslUnit es' undefNode
+  (names, _) <- collectNames ([],[entryFunction]) ast'
   let names' = filter (not . null) names
-  es'' <- (matchingExtDecls names' ast)
-  let ast' = CTranslUnit es'' undefNode
+  es'' <- (matchingExtDecls names' ast')
+  let ast'' = CTranslUnit es'' undefNode
 
   if debug
     then do
       putStrLn "** DEBUG *******************"
       putStrLn "* AST after pruning ******"
-      printAST ast'
+      printAST ast''
       putStrLn "** DEBUG *******************\n"
     else return ()
 
-  return ast'
+  return ast''
+
+possiblySmoosh :: AST -> Maybe AST -> AST
+possiblySmoosh a Nothing = a
+possiblySmoosh (CTranslUnit origAst a) (Just (CTranslUnit stubAst _)) =
+  (CTranslUnit (stubAst++origAst) a)
 
 externOrAttr :: CExtDecl -> Bool
 externOrAttr (CDeclExt (CDecl ((CStorageSpec (CExtern _)):_) _ _)) = True
