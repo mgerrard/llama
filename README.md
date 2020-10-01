@@ -1,16 +1,29 @@
-This collection of files will produce a Haskell executable
-that takes as input the source code of a valid C program
-from the `chrony` codebase and a function within that C
-program, and outputs the source code necessary for ALPACA
-to perform a modular analysis of that function.
+# LLAMA
 
-This project is closely related to ALPACA, but is its own
-beast, so it'll be called `llama`. To produce the `llama` 
-executable, run `make` within this repo's base directory.
-To give the tests a go, run `stack test` within this repo's
-base directory.
+## About
+LLAMA (Lessen Loaded ASTs (for) Modular Analysis) is a preprocessing tool used to produce 
+abbreviated C programs to allow for modular analysis of C programs. LLAMA accepts a C
+program, `P`, and a function, `f()`, in said program and produces a C program, `P'`,
+that contains the portions of the program needed to analyze `f()`. This project is closely 
+related to ALPACA, but is its own beast, so it'll be called `llama`. 
 
-Two technical notes that relevant at a high level:
+## Build
+To produce the `llama` executable, run `make` within this repo's base directory.
+To give the tests a go, run `stack test` within this repo's base directory.
+
+## Usage
+`llama <foo.c> <bar> [stub.c] [-debug]`
+
+Llama requires two arguments and allows for an optional third argument. The first argument is
+the program (`foo.c`) that will be pared down and the second is the function (`bar`) that will be analyzed.
+Llama attempts to create a minimal program that analyzers can process. To this end, many 
+libraries may not be pulled into the program which may prevent parts of the program to be 
+analyzed. To remedy this, llama accepts a stub file which contains definitions for the functions
+that are not already defined. Llama also allows for the -debug flag to allow for debugging of the output.
+
+## Misc
+
+Two technical notes that are relevant at a high level:
 (1) we use the `language-c` Haskell library to get ahold of
 the abstract syntax tree of the input C program--the API for
 the AST can be found 
@@ -21,9 +34,6 @@ considered semi-stable when all 12 functions of depth 0
 depth 0 function, etc.) in the call graphs of functions in
 the `chrony` codebase can be successfully run through 
 ALPACA, according to some oracle.
-
-(TODO: import `chrony` codebase to set up automated tests 
-on shared, stable copies.)
 
 Chrony 0th Cases:
 In array.c:
