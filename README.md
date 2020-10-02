@@ -45,8 +45,8 @@ In array.c:
 
 In util.c:
 
-*  `UTI_FloatHostToNetwork` 
-*  `UTI_GetNtp64Fuzz`
+*  `UTI_FloatHostToNetwork` (alpaca declares unreachability)
+*  `UTI_GetNtp64Fuzz` (alpaca finds the violations)
 
 In client.c:
 
