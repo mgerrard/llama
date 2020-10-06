@@ -63,13 +63,16 @@ replaceAssert fileName funcName = do
   return fileName'
 
 getDebugArg :: [String] -> IO Bool
-getDebugArg [_,_,d] = return (d == "-debug")
-getDebugArg [_,_,_,d] =
-  if (d == "-debug")
+getDebugArg a = do
+  let lastArg = last a
+  let lastArgHead = head lastArg
+  if (lastArg == "-debug")
     then return True
-    else error $ "oops, i don't recognize the argument: "++d
-getDebugArg _ = return False
+    else if(lastArgHead == '-') 
+      then (error $ "I don't recognize this arg"++lastArg)
+    else return False
 
+\end{code}
 getMaybeStubAst :: [String] -> IO (Maybe AST)
 getMaybeStubAst [_,_,s] = do
   if s == "-debug"
@@ -82,4 +85,26 @@ getMaybeStubAst [_,_,s,_] = do
   return (Just sAst)
 getMaybeStubAst _ = return Nothing
 
+\begin{code}
+getMaybeStubAst :: [String] -> IO [(Maybe AST)]
+getMaybeStubAst [_,_] = return [Nothing]
+getMaybeStubAst [_,_,s] = do
+  if s == "-debug"
+    then return [Nothing]
+    else do
+      sAST <- parseFile s
+      return [(Just sAST)]
+getMaybeStubAst s = do
+  if (last s == "-debug")
+    then getMaybeStubASTHelper (init s)
+    else getMaybeStubASTHelper s
+
+getMaybeStubASTHelper :: [String] -> IO [(Maybe AST)]
+getMaybeStubASTHelper [_,_] = return [Nothing]
+getMaybeStubASTHelper s = do
+  let lastItem = last s
+  let theRest = init s
+  sAST <- parseFile lastItem
+  otherASTs <- getMaybeStubASTHelper theRest
+  return (otherASTs ++ [Just sAST])
 \end{code}

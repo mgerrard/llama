@@ -34,10 +34,11 @@ import Helpers
 import Control.Monad (mapM,filterM)
 import System.IO (stderr,hPutStrLn)
 import Data.List (nub,(\\))
+import Data.Maybe (catMaybes)
 import Language.C
 import Language.C.Data.Ident
 
-prune :: String -> AST -> Maybe AST -> Bool -> IO AST
+prune :: String -> AST -> [Maybe AST] -> Bool -> IO AST
 prune entryFunction ast mAst debug = do
   let (CTranslUnit es _) = possiblySmoosh ast mAst
   let es' = filter (not . externOrAttr) es
@@ -57,10 +58,18 @@ prune entryFunction ast mAst debug = do
 
   return ast''
 
-possiblySmoosh :: AST -> Maybe AST -> AST
-possiblySmoosh a Nothing = a
-possiblySmoosh (CTranslUnit origAst a) (Just (CTranslUnit stubAst _)) =
+possiblySmoosh :: AST -> [Maybe AST] -> AST
+possiblySmoosh a [Nothing] = a
+possiblySmoosh (CTranslUnit origAst a) s = do
+  let (Just (CTranslUnit stubAst _)) = smooshStubs s
   (CTranslUnit (stubAst++origAst) a)
+
+smooshStubs :: [Maybe AST] -> Maybe AST
+smooshStubs [] = Nothing
+smooshStubs mAsts = 
+  let asts = catMaybes mAsts
+      extDecls = concat $ map (\(CTranslUnit e _)->e) asts
+    in (Just (CTranslUnit extDecls undefNode))
 
 externOrAttr :: CExtDecl -> Bool
 externOrAttr (CDeclExt (CDecl ((CStorageSpec (CExtern _)):_) _ _)) = True
