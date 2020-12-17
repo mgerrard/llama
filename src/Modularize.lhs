@@ -378,6 +378,12 @@ grabFunction ast f =
         in func
       else error $ "function '"++(f)++"' not found in AST"
 
+extractFuncs :: CTranslUnit -> [CFunDef]
+extractFuncs ast =
+  let extFuns = collectFunctions ast
+      fs = map (\(CFDefExt f)->f) extFuns
+  in fs
+
 collectFunctions :: CTranslUnit -> [CExtDecl]
 collectFunctions (CTranslUnit es _) = filter isFunction es
 

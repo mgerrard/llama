@@ -8,6 +8,7 @@ module Lib
       astToString,
       modularize,
       runPreprocessor,
+      extractFuncs,
       AST
     ) where
 

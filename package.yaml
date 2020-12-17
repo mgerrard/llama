@@ -26,6 +26,7 @@ dependencies:
 - split
 - MissingH
 - process
+- fgl
 
 library:
   source-dirs: src
