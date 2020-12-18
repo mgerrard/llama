@@ -2,7 +2,7 @@ This is based on:
 https://www.cs.cornell.edu/courses/cs412/2008sp/lectures/lec24.pdf
 
 \begin{code}
-module MainCFG where
+module Main where
 
 import Lib
 import Data.Maybe
@@ -12,10 +12,8 @@ import Language.C
 import Language.C.Data.Node
 import Data.Graph.Inductive.Graph (mkGraph, size)
 import Data.Graph.Inductive.PatriciaTree (Gr)
-import Data.Graph.Inductive.Query.Dominators (dom)
-import Data.Graph.Inductive.Query.TransClos
-import Data.Graph.Inductive.Query.SP (sp)
-import Data.Graph.Inductive.Basic (grev)
+import Data.Graph.Inductive.Basic (undir)
+import Data.Graph.Inductive.Query.ArtPoint
 
 main :: IO ()
 main = do
@@ -35,29 +33,15 @@ main = do
   let interprocCfgs = map makeInterCfg funcs
   let intraprocCfg = linkCfgs interprocCfgs
 
-  -- Try out fgl
+  -- Use fgl to find cut vertices (articulation points)
   let g = genGraph intraprocCfg
-  let d = dom g 1
-  putStrLn "---"
-  putStrLn "the dominators of 1:"
-  putStrLn $ show d
-  let pd = dom (grev g) (-1)
-  putStrLn "the postdominators of -1:"
-  putStrLn $ show pd
+      cutVertices = ap $ undir g
+  putStrLn "Cut vertices:"
+  putStrLn $ show $ cutVertices
 
-  let pps = pinchPoints g 1 (-1)
-  putStrLn $ show pps
-  
   -- Display
   displayCfg intraprocCfg
   return ()
-
-pinchPoints :: Gr MyNode Int -> Int -> Int -> [MyNode]
-pinchPoints g startPoint stopPoint =
-  let shortie = sp startPoint stopPoint g
-      dominators = dom g startPoint
-      postdominators = dom (grev g) stopPoint
-  in error "need to implement pinchPoints"
 
 makeBasic :: CFG -> CFG
 makeBasic (CFG n1 n2 ns es) =
@@ -109,8 +93,8 @@ data CFG = CFG {
 genGraph :: CFG -> Gr MyNode Int
 genGraph (CFG entryNode exitNode ns es) = mkGraph gNodes gEdges
   where
-    gNodes = map (\n@(MyNode _ i)->(i,n)) ns
-    gEdges = map (\e@((MyNode _ e1),(MyNode _ e2))->(e1,e2,1)) es
+    gNodes = map (\n@(MyNode _ i)->(i,n)) (nub ns)
+    gEdges = map (\e@((MyNode _ e1),(MyNode _ e2))->(e1,e2,1)) (nub es)
 
 data MyNode = MyNode {
   statement :: CStat,
@@ -129,7 +113,26 @@ makeInterCfg f@(CFunDef _ _ _ s _) =
       cfg5 = removeSelfEdges cfg4
       cfg6 = makeBasic cfg5
       cfg7 = reachableCfg cfg6
+--      cfg8 = expandExitNodes cfg7
   in cfg7
+
+maxIndex :: CFG -> Int
+maxIndex (CFG _ _ ns _) = maximum $ map (\(MyNode _ i)->i) ns
+
+expandExitNodes :: CFG -> CFG
+expandExitNodes c@(CFG n1 n2 _ es) =
+  let m = maxIndex c
+      (exitNodeEdges,es') = partition (\((MyNode _ s),_)->s<0) es
+      exitEdgesWithIdx = zip [m..] exitNodeEdges
+      expandedEdges = concat $ map expandEdge exitEdgesWithIdx
+      es'' = es'++expandedEdges
+      ns = nub $ concat $ map (\(na,nb)->[na,nb]) es''
+  in CFG n1 n2 ns es''
+
+expandEdge :: (Int, (MyNode,MyNode)) -> [(MyNode,MyNode)]
+expandEdge (idx, (s@(MyNode stmt _),v)) =
+  let n = MyNode stmt idx
+  in [(s,n),(n,v)]
 
 reachableCfg :: CFG -> CFG
 reachableCfg (CFG n1 n2 _ es) =
@@ -242,7 +245,8 @@ cfg s@(CIf _ s1 Nothing _) =
       ns = (nodes tBlock)++[entryNode,exitNode]
       e1 = (entryNode, entryN tBlock)
       e2 = (exitN tBlock, exitNode)
-      es = (edges tBlock)++[e1,e2]
+      e3 = (entryNode, exitNode)
+      es = (edges tBlock)++[e1,e2,e3]
   in CFG entryNode exitNode ns es
 cfg s@(CFor _ _ _ s1 _) = 
   let entryNode = makeNode s
@@ -376,7 +380,7 @@ linkCfgs [c] = c
 linkCfgs _ = error "need to implement linkCfgs for more than one"
 
 instance Show MyNode where
-  show (MyNode _ l) = show l
+  show (MyNode _ l) = "("++(show l)++")"
 
 displayCfg :: CFG -> IO ()
 displayCfg (CFG en ex ns es) = do
