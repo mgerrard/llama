@@ -2,7 +2,7 @@ This is based on:
 https://www.cs.cornell.edu/courses/cs412/2008sp/lectures/lec24.pdf
 
 \begin{code}
-module Main where
+module MainCFG where
 
 import Lib
 import Data.Maybe
@@ -10,7 +10,8 @@ import Data.List
 import System.Environment
 import Language.C
 import Language.C.Data.Node
-import Data.Graph.Inductive.Graph (mkGraph, size)
+import Language.C.Data.Ident
+import Data.Graph.Inductive.Graph (mkGraph, size, hasNeighbor, outdeg)
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Graph.Inductive.Basic (undir)
 import Data.Graph.Inductive.Query.ArtPoint
@@ -25,23 +26,31 @@ main = do
     else return ()
   {- Index 0 exists following the above check -}
   let fileName = a !! 0
-  p' <- runPreprocessor fileName [] -- no preprocessor args for now
 
   -- Main logic  
-  ast <- parseFile p'
+  ast <- parseFile fileName
   let funcs = extractFuncs ast
-  let interprocCfgs = map makeInterCfg funcs
-  let intraprocCfg = linkCfgs interprocCfgs
-
-  -- Use fgl to find cut vertices (articulation points)
-  let g = genGraph intraprocCfg
-      cutVertices = ap $ undir g
-  putStrLn "Cut vertices:"
-  putStrLn $ show $ cutVertices
+      interprocCfgs = map makeInterCfg funcs
+      intraprocCfg = linkCfgs interprocCfgs
+      g = undir $ genGraph intraprocCfg
+      cuts = cutVertices g
+      displayStr = fileName++" "++(show $ length cuts)++" "++(show cuts)
+  putStrLn displayStr
 
   -- Display
   displayCfg intraprocCfg
   return ()
+
+cutVertices :: Gr MyNode Int -> [Int]
+cutVertices g =
+  -- first find cuts (articulation points)
+  -- and then remove the neighbors
+  let cuts = reverse $ ap g
+      cutTuples = zip cuts (tail cuts)
+      cuts' = concat $ map (\(a,b)->if ((hasNeighbor g a b) && (outdeg g a)==1)
+                                      then []
+                                      else [b]) cutTuples
+  in cuts'
 
 makeBasic :: CFG -> CFG
 makeBasic (CFG n1 n2 ns es) =
@@ -104,35 +113,20 @@ data MyNode = MyNode {
 instance Eq MyNode where
   (MyNode _ l1) == (MyNode _ l2) = l1==l2
 
-makeInterCfg :: CFunDef -> CFG
+makeInterCfg :: CFunDef -> (String,CFG)
 makeInterCfg f@(CFunDef _ _ _ s _) =
   let cfg1 = cfg s
       cfg2 = makeEntryAndExit f cfg1
       cfg3 = resolveReturns cfg2
       cfg4 = resolveGotos cfg3
       cfg5 = removeSelfEdges cfg4
-      cfg6 = makeBasic cfg5
-      cfg7 = reachableCfg cfg6
---      cfg8 = expandExitNodes cfg7
-  in cfg7
+      cfg6 = reachableCfg cfg5
+      n = grabFuncName f
+  in (n,cfg6)
 
-maxIndex :: CFG -> Int
-maxIndex (CFG _ _ ns _) = maximum $ map (\(MyNode _ i)->i) ns
-
-expandExitNodes :: CFG -> CFG
-expandExitNodes c@(CFG n1 n2 _ es) =
-  let m = maxIndex c
-      (exitNodeEdges,es') = partition (\((MyNode _ s),_)->s<0) es
-      exitEdgesWithIdx = zip [m..] exitNodeEdges
-      expandedEdges = concat $ map expandEdge exitEdgesWithIdx
-      es'' = es'++expandedEdges
-      ns = nub $ concat $ map (\(na,nb)->[na,nb]) es''
-  in CFG n1 n2 ns es''
-
-expandEdge :: (Int, (MyNode,MyNode)) -> [(MyNode,MyNode)]
-expandEdge (idx, (s@(MyNode stmt _),v)) =
-  let n = MyNode stmt idx
-  in [(s,n),(n,v)]
+grabFuncName :: CFunDef -> String
+grabFuncName (CFunDef _ (CDeclr (Just (Ident n _ _)) _ _ _ _) _ _ _) = n
+grabFuncName f = error $ "can't find function name for: "++(show $ pretty f)
 
 reachableCfg :: CFG -> CFG
 reachableCfg (CFG n1 n2 _ es) =
@@ -375,9 +369,44 @@ concatCfgs cs = foldl (\acc c ->
                           ((edges acc)++(edges c)++[(exitN acc,entryN c)])
                       ) (head cs) (tail cs)
 
-linkCfgs :: [CFG] -> CFG
-linkCfgs [c] = c
-linkCfgs _ = error "need to implement linkCfgs for more than one"
+linkCfgs :: [(String,CFG)] -> CFG
+linkCfgs [(_,c)] = c
+linkCfgs assocList =
+  let cfgs = map snd assocList
+      callEdges = concat $ map (resolveCallEdges assocList) cfgs
+      (Just mainCfg) = lookup "main" assocList
+      e1 = entryN mainCfg
+      e2 = exitN mainCfg
+      ns = concat $ map nodes cfgs
+      es = (concat $ map edges cfgs)++callEdges
+  in reachableCfg $ makeBasic $ CFG e1 e2 ns es
+
+resolveCallEdges :: [(String,CFG)] -> CFG -> [(MyNode,MyNode)]
+resolveCallEdges assocList (CFG _ _ ns _) =
+  let mNodeFuncTuples = map (\n@(MyNode s _)->(n,hasFuncCall s)) ns
+      nodeFuncTuples = filter (isJust . snd) mNodeFuncTuples
+      nodeFuncTuples' = map (\(n,(Just f))->(n,f)) nodeFuncTuples
+      mCallEdges = map (tryToResolve assocList) nodeFuncTuples'
+  in concat $ catMaybes mCallEdges
+
+tryToResolve :: [(String,CFG)] -> (MyNode,String) -> Maybe [(MyNode,MyNode)]
+tryToResolve assocList (n,funcName) =
+  let mCfg = lookup funcName assocList
+  in
+    if isJust mCfg
+     then
+       let (Just c) = mCfg
+           e1 = (n,entryN c)
+           e2 = (exitN c,n)
+       in (Just [e1,e2])
+     else Nothing
+
+hasFuncCall :: CStat -> Maybe String
+-- need to do testing of different kinds of function calls
+--hasFuncCall (CExpr (Just (CAssign CAssignOp _ (CVar (Ident iden _ _) _) _) _) = Just iden
+hasFuncCall (CExpr (Just (CAssign CAssignOp _ (CCall (CVar (Ident iden _ _) _) _ _) _)) _) = Just iden
+hasFuncCall (CExpr (Just (CCall (CVar (Ident iden _ _) _) _ _)) _) = Just iden
+hasFuncCall s = Nothing
 
 instance Show MyNode where
   show (MyNode _ l) = "("++(show l)++")"
