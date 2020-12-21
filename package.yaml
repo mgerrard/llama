@@ -42,6 +42,17 @@ executables:
     dependencies:
     - llama
 
+  pinchpoints:
+    main:                MainPinchpoints.lhs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -main-is MainPinchpoints
+    - -with-rtsopts=-N
+    dependencies:
+    - llama
+
 tests:
   llama-test:
     main:                Spec.hs
