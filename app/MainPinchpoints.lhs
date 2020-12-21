@@ -22,7 +22,7 @@ main = do
   -- Setup
   a <- getArgs  
   if (length a) < 1
-    then error "Usage: llama <foo.c>"
+    then error "Usage: pinchpoints <foo.c> [-d]"
     else return ()
   {- Index 0 exists following the above check -}
   let fileName = a !! 0
@@ -38,7 +38,10 @@ main = do
   putStrLn displayStr
 
   -- Display
---  displayCfg intraprocCfg
+  if (length a > 1)
+    then do displayCfg intraprocCfg
+    else return ()
+
   return ()
 
 cutVertices :: Gr MyNode Int -> [Int]
@@ -46,7 +49,13 @@ cutVertices g =
   -- first find cuts (articulation points)
   -- and then remove the neighbors
   let cuts = reverse $ ap g
-      cutTuples = zip cuts (tail cuts)
+      cuts' = removeNeighbors g cuts
+  in cuts'
+
+removeNeighbors :: Gr MyNode Int -> [Int] -> [Int]
+removeNeighbors _ [n] = [n]
+removeNeighbors g cuts = 
+  let cutTuples = zip cuts (tail cuts)
       cuts' = concat $ map (\(a,b)->if ((hasNeighbor g a b) && (abs(a) /= abs(b)))
                                       then []
                                       else [b]) cutTuples
