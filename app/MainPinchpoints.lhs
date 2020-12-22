@@ -11,10 +11,11 @@ import System.Environment
 import Language.C
 import Language.C.Data.Node
 import Language.C.Data.Ident
-import Data.Graph.Inductive.Graph (mkGraph, size, hasNeighbor, outdeg)
+import Data.Graph.Inductive.Graph (mkGraph, size, hasNeighbor, outdeg, Node)
 import Data.Graph.Inductive.PatriciaTree (Gr)
-import Data.Graph.Inductive.Basic (undir)
+import Data.Graph.Inductive.Basic (undir,grev)
 import Data.Graph.Inductive.Query.ArtPoint
+import Data.Graph.Inductive.Query.Dominators
 
 main :: IO ()
 main = do
@@ -31,10 +32,10 @@ main = do
   ast <- parseFile fileName
   let funcs = extractFuncs ast
       interprocCfgs = map makeInterCfg funcs
-      intraprocCfg = linkCfgs interprocCfgs
-      g = undir $ genGraph intraprocCfg
-      cuts = cutVertices g
-      displayStr = fileName++" "++(show $ length cuts)++" "++(show cuts)
+      (intraprocCfg,source,sink) = linkCfgs interprocCfgs
+      g = genGraph intraprocCfg
+  pps <- pinchpoints g source sink
+  let displayStr = fileName++" "++(show $ length pps)++" "++(show pps)
   putStrLn displayStr
 
   -- Display
@@ -44,13 +45,23 @@ main = do
 
   return ()
 
+pinchpoints :: Gr MyNode Int -> Int -> Int -> IO [Int]
+pinchpoints g source sink = do
+  let pdoms = postdom g sink
+  let (Just pps) = lookup source pdoms
+      pps' = removeNeighbors g pps
+  return pps'
+
+postdom :: Gr MyNode Int -> Int -> [(Node, [Node])]
+postdom g sink = dom (grev g) sink
+
 cutVertices :: Gr MyNode Int -> [Int]
 cutVertices g =
   -- first find cuts (articulation points)
   -- and then remove the neighbors
   let cuts = reverse $ ap g
       cuts' = removeNeighbors g cuts
-  in cuts'
+  in cuts
 
 removeNeighbors :: Gr MyNode Int -> [Int] -> [Int]
 removeNeighbors _ [n] = [n]
@@ -129,9 +140,8 @@ makeInterCfg f@(CFunDef _ _ _ s _) =
       cfg3 = resolveReturns cfg2
       cfg4 = resolveGotos cfg3
       cfg5 = removeSelfEdges cfg4
-      cfg6 = reachableCfg cfg5
       n = grabFuncName f
-  in (n,cfg6)
+  in (n,cfg5)
 
 grabFuncName :: CFunDef -> String
 grabFuncName (CFunDef _ (CDeclr (Just (Ident n _ _)) _ _ _ _) _ _ _) = n
@@ -153,6 +163,9 @@ removeSelfEdges :: CFG -> CFG
 removeSelfEdges (CFG n1 n2 ns es) =
   let es' = filter (\(a,b)-> a /= b) es
   in CFG n1 n2 ns es'
+
+emptyNode :: MyNode
+emptyNode = MyNode (CExpr Nothing undefNode) 0
 
 makeEntryAndExit :: CFunDef -> CFG -> CFG
 makeEntryAndExit f (CFG entryNode exitNode ns es) =
@@ -258,7 +271,8 @@ cfg s@(CFor _ _ _ s1 _) =
       ns = (nodes tBlock)++[entryNode,exitNode]
       e1 = (entryNode, entryN tBlock)
       e2 = (exitN tBlock, exitNode)
-      es = (edges tBlock)++[e1,e2]
+      e3 = (entryNode, exitNode)
+      es = (edges tBlock)++[e1,e2,e3]
   in CFG entryNode exitNode ns es
 cfg s@(CSwitch _ ss _) = 
   let entryNode = makeNode s
@@ -367,8 +381,11 @@ makeNode s =
 exitOf :: MyNode -> MyNode
 exitOf n = MyNode (CExpr Nothing undefNode) (-(nodeLabel n))
 
+emptyCfg :: CFG
+emptyCfg = CFG emptyNode emptyNode [emptyNode] []
+
 concatCfgs :: [CFG] -> CFG
-concatCfgs [] = error "trying to concat 0 CFGS"
+concatCfgs [] = emptyCfg
 concatCfgs [c] = c
 concatCfgs cs = foldl (\acc c ->
                         CFG
@@ -378,8 +395,14 @@ concatCfgs cs = foldl (\acc c ->
                           ((edges acc)++(edges c)++[(exitN acc,entryN c)])
                       ) (head cs) (tail cs)
 
-linkCfgs :: [(String,CFG)] -> CFG
-linkCfgs [(_,c)] = c
+entryId :: CFG -> Int
+entryId = nodeLabel . entryN
+
+exitId :: CFG -> Int
+exitId = nodeLabel . exitN
+
+linkCfgs :: [(String,CFG)] -> (CFG, Int, Int)
+linkCfgs [(_,c)] = (c, (entryId c), (exitId c))
 linkCfgs assocList =
   let cfgs = map snd assocList
       callEdges = concat $ map (resolveCallEdges assocList) cfgs
@@ -388,7 +411,8 @@ linkCfgs assocList =
       e2 = exitN mainCfg
       ns = concat $ map nodes cfgs
       es = (concat $ map edges cfgs)++callEdges
-  in reachableCfg $ makeBasic $ CFG e1 e2 ns es
+  in ((CFG e1 e2 ns es), (entryId mainCfg), (exitId mainCfg))
+--  in reachableCfg $ makeBasic $ CFG e1 e2 ns es
 
 resolveCallEdges :: [(String,CFG)] -> CFG -> [(MyNode,MyNode)]
 resolveCallEdges assocList (CFG _ _ ns _) =
