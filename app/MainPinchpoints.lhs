@@ -11,11 +11,12 @@ import System.Environment
 import Language.C
 import Language.C.Data.Node
 import Language.C.Data.Ident
-import Data.Graph.Inductive.Graph (mkGraph, size, hasNeighbor, outdeg, Node)
+import Data.Graph.Inductive.Graph (mkGraph, size, hasNeighbor, outdeg, Node, nodes, delNodes)
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Graph.Inductive.Basic (undir,grev)
 import Data.Graph.Inductive.Query.ArtPoint
 import Data.Graph.Inductive.Query.Dominators
+import Data.Graph.Inductive.Query.DFS (reachable)
 
 main :: IO ()
 main = do
@@ -45,23 +46,22 @@ main = do
 
   return ()
 
+unreachable :: Int -> Gr MyNode Int -> [Int]
+unreachable source g =
+  let rs = reachable source g
+  in (nodes g) \\ rs
+
 pinchpoints :: Gr MyNode Int -> Int -> Int -> IO [Int]
 pinchpoints g source sink = do
-  let pdoms = postdom g sink
-  let (Just pps) = lookup source pdoms
-      pps' = removeNeighbors g pps
+  let unreachs = unreachable source g
+      g' = delNodes unreachs g
+      pdoms = postdom g' sink
+      (Just pps) = lookup source pdoms
+      pps' = removeNeighbors g' pps
   return pps'
 
 postdom :: Gr MyNode Int -> Int -> [(Node, [Node])]
 postdom g sink = dom (grev g) sink
-
-cutVertices :: Gr MyNode Int -> [Int]
-cutVertices g =
-  -- first find cuts (articulation points)
-  -- and then remove the neighbors
-  let cuts = reverse $ ap g
-      cuts' = removeNeighbors g cuts
-  in cuts
 
 removeNeighbors :: Gr MyNode Int -> [Int] -> [Int]
 removeNeighbors _ [n] = [n]
@@ -115,7 +115,7 @@ outDegree n es =
 data CFG = CFG {
   entryN :: MyNode,
   exitN :: MyNode,
-  nodes :: [MyNode],
+  nodes' :: [MyNode],
   edges :: [(MyNode,MyNode)]
 }
 
@@ -149,15 +149,15 @@ grabFuncName f = error $ "can't find function name for: "++(show $ pretty f)
 
 reachableCfg :: CFG -> CFG
 reachableCfg (CFG n1 n2 _ es) =
-  let es' = reachable n1 es
+  let es' = myReachable n1 es
       ns = nub $ concat $ map (\(na,nb)->[na,nb]) es'
   in CFG n1 n2 ns es'
 
-reachable :: MyNode -> [(MyNode,MyNode)] -> [(MyNode,MyNode)]
-reachable n es =
+myReachable :: MyNode -> [(MyNode,MyNode)] -> [(MyNode,MyNode)]
+myReachable n es =
   let (es',rest) = partition (\(s,_)->s==n) es
       neighbs = map (\(_,nb)->nb) es'
-  in es'++(concat $ map (\x->reachable x rest) neighbs)
+  in es'++(concat $ map (\x->myReachable x rest) neighbs)
 
 removeSelfEdges :: CFG -> CFG
 removeSelfEdges (CFG n1 n2 ns es) =
@@ -246,7 +246,7 @@ cfg s@(CIf _ s1 (Just s2) _) =
       exitNode = exitOf entryNode
       tBlock = cfg s1
       fBlock = cfg s2
-      ns = (nodes tBlock)++(nodes fBlock)++[entryNode,exitNode]
+      ns = (nodes' tBlock)++(nodes' fBlock)++[entryNode,exitNode]
       e1 = (entryNode, entryN tBlock)
       e2 = (entryNode, entryN fBlock)
       e3 = (exitN tBlock, exitNode)
@@ -258,7 +258,7 @@ cfg s@(CIf _ s1 Nothing _) =
   let entryNode = makeNode s
       exitNode = exitOf entryNode
       tBlock = cfg s1
-      ns = (nodes tBlock)++[entryNode,exitNode]
+      ns = (nodes' tBlock)++[entryNode,exitNode]
       e1 = (entryNode, entryN tBlock)
       e2 = (exitN tBlock, exitNode)
       e3 = (entryNode, exitNode)
@@ -268,7 +268,7 @@ cfg s@(CFor _ _ _ s1 _) =
   let entryNode = makeNode s
       exitNode = exitOf entryNode
       tBlock = cfg s1
-      ns = (nodes tBlock)++[entryNode,exitNode]
+      ns = (nodes' tBlock)++[entryNode,exitNode]
       e1 = (entryNode, entryN tBlock)
       e2 = (exitN tBlock, exitNode)
       e3 = (entryNode, exitNode)
@@ -283,7 +283,7 @@ cfg s@(CWhile _ b _ _) =
   let entryNode = makeNode s
       exitNode = exitOf entryNode
       tBlock = cfg b
-      ns = (nodes tBlock)++[entryNode,exitNode]
+      ns = (nodes' tBlock)++[entryNode,exitNode]
       e1 = (entryNode, entryN tBlock)
       e2 = (exitN tBlock, entryNode)
       e3 = (entryNode, exitNode)
@@ -293,7 +293,7 @@ cfg s@(CCase _ b _) =
   let entryNode = makeNode s
       exitNode = exitOf entryNode
       c = cfg b
-      ns = [entryNode,exitNode]++(nodes c)
+      ns = [entryNode,exitNode]++(nodes' c)
       e1 = (entryNode, entryN c)
       e2 = (exitN c, exitNode)
       es = [e1,e2]++(edges c)
@@ -302,7 +302,7 @@ cfg s@(CCases _ _ b _) =
   let entryNode = makeNode s
       exitNode = exitOf entryNode
       c = cfg b
-      ns = [entryNode,exitNode]++(nodes c)
+      ns = [entryNode,exitNode]++(nodes' c)
       e1 = (entryNode, entryN c)
       e2 = (exitN c, exitNode)
       es = [e1,e2]++(edges c)
@@ -311,7 +311,7 @@ cfg s@(CDefault b _) =
   let entryNode = makeNode s
       exitNode = exitOf entryNode
       c = cfg b
-      ns = [entryNode,exitNode]++(nodes c)
+      ns = [entryNode,exitNode]++(nodes' c)
       e1 = (entryNode, entryN c)
       e2 = (exitN c, exitNode)
       es = [e1,e2]++(edges c)
@@ -320,7 +320,7 @@ cfg s@(CLabel _ b _ _) =
   let entryNode = makeNode s
       exitNode = exitOf entryNode
       c = cfg b
-      ns = [entryNode,exitNode]++(nodes c)
+      ns = [entryNode,exitNode]++(nodes' c)
       e1 = (entryNode, entryN c)
       e2 = (exitN c, exitNode)
       es = [e1,e2]++(edges c)
@@ -342,14 +342,14 @@ processSwitchBody (CCompound _ blockItems _) entryNode exitNode =
       blockCfg = concatCfgs blockCfgs
       toExit = (exitN blockCfg, exitNode)
       es2 = redirectBreaks exitNode blockCfg
-      ns = [entryNode,exitNode]++(nodes blockCfg)
+      ns = [entryNode,exitNode]++(nodes' blockCfg)
   in (ns, (es1++es2++[toExit]))
 processSwitchBody s entryNode exitNode =
   let c = cfg s
       e1 = (entryNode, entryN c)
       e2 = (exitN c, exitNode)
       es = [e1,e2]++(edges c)
-      ns = [entryNode,exitNode]++(nodes c)
+      ns = [entryNode,exitNode]++(nodes' c)
   in (ns,es)
 
 edgeToCaseAndDefault :: MyNode -> CFG -> Maybe (MyNode,MyNode)
@@ -391,7 +391,7 @@ concatCfgs cs = foldl (\acc c ->
                         CFG
                           (entryN acc)
                           (exitN c)
-                          ((nodes acc)++(nodes c))
+                          ((nodes' acc)++(nodes' c))
                           ((edges acc)++(edges c)++[(exitN acc,entryN c)])
                       ) (head cs) (tail cs)
 
@@ -405,22 +405,36 @@ linkCfgs :: [(String,CFG)] -> (CFG, Int, Int)
 linkCfgs [(_,c)] = (c, (entryId c), (exitId c))
 linkCfgs assocList =
   let cfgs = map snd assocList
-      callEdges = concat $ map (resolveCallEdges assocList) cfgs
+      es = concat $ map (resolveCallEdges assocList) cfgs
       (Just mainCfg) = lookup "main" assocList
-      e1 = entryN mainCfg
-      e2 = exitN mainCfg
-      ns = concat $ map nodes cfgs
-      es = (concat $ map edges cfgs)++callEdges
-  in ((CFG e1 e2 ns es), (entryId mainCfg), (exitId mainCfg))
---  in reachableCfg $ makeBasic $ CFG e1 e2 ns es
+      n1 = entryN mainCfg
+      n2 = exitN mainCfg
+      ns = concat $ map nodes' cfgs
+      ns' = ns++(nub $ concat $ map (\(n1,n2)->[n1,n2]) es)
+  in ((CFG n1 n2 ns' es), (entryId mainCfg), (exitId mainCfg))
 
 resolveCallEdges :: [(String,CFG)] -> CFG -> [(MyNode,MyNode)]
-resolveCallEdges assocList (CFG _ _ ns _) =
+resolveCallEdges assocList (CFG _ _ ns es) =
   let mNodeFuncTuples = map (\n@(MyNode s _)->(n,hasFuncCall s)) ns
       nodeFuncTuples = filter (isJust . snd) mNodeFuncTuples
       nodeFuncTuples' = map (\(n,(Just f))->(n,f)) nodeFuncTuples
-      mCallEdges = map (tryToResolve assocList) nodeFuncTuples'
-  in concat $ catMaybes mCallEdges
+      nodeFuncTuples'' = filter (isDefined assocList) nodeFuncTuples'
+      fNodes = map fst nodeFuncTuples''
+      es' = makeFuncExits es fNodes
+      mCallEdges = map (tryToResolve assocList) nodeFuncTuples''
+      callEdges = concat $ catMaybes mCallEdges
+  in (es'++callEdges)
+
+makeFuncExits :: [(MyNode,MyNode)] -> [MyNode] -> [(MyNode,MyNode)]
+makeFuncExits es fNodes =
+  map (\(n1,n2)->
+    if (n1 `elem` fNodes)
+      then ((negNode n1),n2)
+      else (n1,n2)
+    ) es
+
+isDefined :: [(String,CFG)] -> (MyNode,String) -> Bool
+isDefined assocList (n,funcName) = isJust $ lookup funcName assocList
 
 tryToResolve :: [(String,CFG)] -> (MyNode,String) -> Maybe [(MyNode,MyNode)]
 tryToResolve assocList (n,funcName) =
@@ -430,13 +444,16 @@ tryToResolve assocList (n,funcName) =
      then
        let (Just c) = mCfg
            e1 = (n,entryN c)
-           e2 = (exitN c,n)
+           e2 = (exitN c,(negNode n))
        in (Just [e1,e2])
      else Nothing
 
+negNode :: MyNode -> MyNode
+negNode (MyNode s l) = MyNode s (-l)
+
 hasFuncCall :: CStat -> Maybe String
 -- need to do testing of different kinds of function calls
---hasFuncCall (CExpr (Just (CAssign CAssignOp _ (CVar (Ident iden _ _) _) _) _) = Just iden
+hasFuncCall (CExpr (Just (CAssign CAssignOp _ (CVar (Ident iden _ _) _) _)) _) = Just iden
 hasFuncCall (CExpr (Just (CAssign CAssignOp _ (CCall (CVar (Ident iden _ _) _) _ _) _)) _) = Just iden
 hasFuncCall (CExpr (Just (CCall (CVar (Ident iden _ _) _) _ _)) _) = Just iden
 hasFuncCall s = Nothing

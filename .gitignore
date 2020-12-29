@@ -1,0 +1,4 @@
+*~
+.stack-work/
+llama.cabal
+*.lock
