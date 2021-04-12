@@ -9,6 +9,7 @@ module Lib
       modularize,
       runPreprocessor,
       extractFuncs,
+      collectFunctions,
       AST
     ) where
 

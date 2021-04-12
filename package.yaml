@@ -53,6 +53,17 @@ executables:
     dependencies:
     - llama
 
+  caller-id:
+    main:                MainCallerId.lhs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -main-is MainCallerId
+    - -with-rtsopts=-N
+    dependencies:
+    - llama
+
 tests:
   llama-test:
     main:                Spec.hs
